@@ -123,6 +123,7 @@ class Dropzone extends Emitter
     "maxfilesexceeded"
     "maxfilesreached"
     "queuecomplete"
+    "queuefilled"
   ]
 
 
@@ -490,6 +491,8 @@ class Dropzone extends Emitter
 
     addedfiles: noop
 
+    queuefilled: noop
+
 
     # This template will be chosen when a new file is dropped.
     previewTemplate:  """
@@ -539,6 +542,7 @@ class Dropzone extends Emitter
     @clickableElements = [ ]
     @listeners = [ ]
     @files = [] # All files
+    @filesToAdd = 0
 
     @element = document.querySelector @element if typeof @element == "string"
 
@@ -644,8 +648,13 @@ class Dropzone extends Emitter
         document.querySelector(@options.hiddenInputContainer).appendChild @hiddenFileInput
         @hiddenFileInput.addEventListener "change", =>
           files = @hiddenFileInput.files
-          @addFile file for file in files if files.length
+          @filesToAdd = 0
+          for file in files
+            if files.length
+              @filesToAdd++
+              @addFile file
           @emit "addedfiles", files
+          @checkQueueFilled()
           setupHiddenFileInput()
       setupHiddenFileInput()
 
@@ -850,10 +859,11 @@ class Dropzone extends Emitter
       @element.classList.remove "dz-max-files-reached"
 
 
-
   drop: (e) ->
     return unless e.dataTransfer
     @emit "drop", e
+
+    @filesToAdd = 0
 
     files = e.dataTransfer.files
     @emit "addedfiles", files
@@ -866,6 +876,7 @@ class Dropzone extends Emitter
         @_addFilesFromItems items
       else
         @handleFiles files
+        @checkQueueFilled()
     return
 
   paste: (e) ->
@@ -878,7 +889,9 @@ class Dropzone extends Emitter
 
 
   handleFiles: (files) ->
-    @addFile file for file in files
+    for file in files
+      @filesToAdd++
+      @addFile file
 
   # When a folder is dropped (or files are pasted), items must be handled
   # instead of files.
@@ -886,12 +899,14 @@ class Dropzone extends Emitter
     for item in items
       if item.webkitGetAsEntry? and entry = item.webkitGetAsEntry()
         if entry.isFile
+          @filesToAdd++
           @addFile item.getAsFile()
         else if entry.isDirectory
           # Append all files from that directory to files
           @_addFilesFromDirectory entry, entry.name
       else if item.getAsFile?
         if !item.kind? or item.kind == "file"
+          @filesToAdd++
           @addFile item.getAsFile()
 
 
@@ -906,8 +921,11 @@ class Dropzone extends Emitter
         if entries.length > 0
           for entry in entries
             if entry.isFile
+              @filesToAdd++
               entry.file (file) =>
-                return if @options.ignoreHiddenFiles and file.name.substring(0, 1) is '.'
+                if @options.ignoreHiddenFiles and file.name.substring(0, 1) is '.'
+                  @filesToAdd--
+                  return
                 file.fullPath = "#{path}/#{file.name}"
                 @addFile file
             else if entry.isDirectory
@@ -949,6 +967,7 @@ class Dropzone extends Emitter
       total: file.size
       bytesSent: 0
     @files.push file
+    @filesToAdd = @filesToAdd - 1
 
     file.status = Dropzone.ADDED
 
@@ -965,6 +984,10 @@ class Dropzone extends Emitter
         @enqueueFile file if @options.autoQueue # Will set .accepted = true
       @_updateMaxFilesReachedClass()
 
+    @checkQueueFilled()
+
+  checkQueueFilled: ->
+    @emit('queuefilled', @files) if @filesToAdd is 0
 
   # Wrapper for enqueueFile
   enqueueFiles: (files) -> @enqueueFile file for file in files; null

@@ -894,9 +894,9 @@
           this._addFilesFromItems(items);
         } else {
           this.handleFiles(files);
+          this.checkQueueFilled();
         }
       }
-      this.checkQueueFilled();
     };
 
     Dropzone.prototype.paste = function(e) {
@@ -967,6 +967,7 @@
                   _this.filesToAdd++;
                   entry.file(function(file) {
                     if (_this.options.ignoreHiddenFiles && file.name.substring(0, 1) === '.') {
+                      _this.filesToAdd--;
                       return;
                     }
                     file.fullPath = "" + path + "/" + file.name;
